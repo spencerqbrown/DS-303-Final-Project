@@ -1,0 +1,132 @@
+---
+title: "EDA.Rmd"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Read in the data.
+```{r}
+df = read.csv("data.csv")
+```
+Check variables for type issues etc.
+```{r}
+str(df)
+```
+Let's Return.to.Prison and Target.Population boolean
+```{r}
+df$Return.to.Prison = as.character(df$Return.to.Prison)
+df$Return.to.Prison[df$Return.to.Prison == "Yes"] = "TRUE"
+df$Return.to.Prison[df$Return.to.Prison == "No"] = "FALSE"
+df$Return.to.Prison = as.logical(df$Return.to.Prison)
+
+df$Target.Population = as.character(df$Target.Population)
+df$Target.Population[df$Target.Population == "Yes"] = "TRUE"
+df$Target.Population[df$Target.Population == "No"] = "FALSE"
+df$Target.Population = as.logical(df$Target.Population)
+
+str(df)
+```
+
+Let's get rid of NAs.
+```{r}
+# find all columns with NA using an apply of anyNA on each column
+colnames(df)[apply(df, 2, anyNA)]
+```
+Just Days.to.Return it seems. These are presumably those who did not reoffend, so these are valid values, so we will leave it as is. Let's see how severe it is.
+```{r}
+cat("Total NA rows:", sum(is.na(df$Days.to.Return)),"\n")
+cat("Rows total:", nrow(df), "\n")
+cat("Proportion of rows NA:", sum(is.na(df$Days.to.Return)) / nrow(df))
+```
+So around 2/3 of released prisoners did not return to prison, assuming NAs are not just missing values. Given the cleanliness of the dataset, this likely is a good assumption. We can check by seeing if these NAs are the same rows as FALSE values for Return.to.Prison:
+```{r}
+# we can see if there any NAs that aren't matched with those that did not return to prison
+length(df$Days.to.Return[(is.na(df$Days.to.Return)) & (df$Return.to.Prison == TRUE)])
+```
+Since there are no instances of a return to prison with an NA days to return, we can presume all of the NAs are valid.
+
+
+
+Now we can look at the values of some of our most relevant factor variables.
+```{r}
+levels(df$Offense.Classification)
+```
+```{r}
+levels(df$Offense.Type)
+```
+```{r}
+levels(df$Offense.Subtype)
+```
+We will likley use dummy variables if we use these for regression, and we likely will considering their potential usefulness in predicting recidivism, new offense, days until return, etc.
+
+Let's see if offense types and subtypes differ between new and original offenses.
+```{r}
+levels(df$New.Offense.Type)
+```
+So New.Offense.Type adds Assault, Drug Possession, Flight/Escape, Traffic, and Sex. These are all categories previously contained in offense subtype.
+
+```{r}
+levels(df$New.Offense.Sub.Type)
+```
+The new offense type categories are still within subtype, though there are some differences between the subtype factors. Now, "Special sentence Revocation" is gone and we have a new blank factor, for example. Also note that new offense type has a blank factor. Maybe these are markers that the new offense matched the old offense type and/or subtype. Let's see if old and new types match otherwise:
+```{r}
+sum(as.character(df$Offense.Type) == as.character(df$New.Offense.Type))
+```
+So, we have around 4000 indices where offense type and new offensive type match. Let's see what the values are. It is then unclear what the blank factors mean. 
+```{r}
+length(df$New.Offense.Type[(df$New.Offense.Type == "") | (df$New.Offense.Sub.Type == "")])
+```
+So, these occur very often in the data set. It is still possible that these indicate a match of original and new types, but it may warrent further investigation. They are often likely released prisoners who never reoffended, similar to NAs in Days.to.Return.
+
+Let's reorder variables by frequency and plot their distributions.
+```{r}
+library(ggplot2)
+
+df$Offense.Type = reorder(df$Offense.Type, df$Offense.Type, length)
+df$Offense.Subtype = reorder(df$Offense.Subtype, df$Offense.Subtype, length)
+df$New.Offense.Type = reorder(df$New.Offense.Type, df$New.Offense.Type, length)
+df$New.Offense.Sub.Type = reorder(df$New.Offense.Sub.Type, df$New.Offense.Sub.Type, length)
+df$Age.At.Release = reorder(df$Age.At.Release, df$Age.At.Release, length)
+```
+Plots:
+```{r}
+ggplot(df, aes(x=Offense.Type)) + geom_bar() + labs(x="Offense Type", y="Count", title="Count of Offenses by Type") + coord_flip()
+```
+So, drug and proprtyb charges are our most common first offenses.
+```{r}
+ggplot(df, aes(x=Offense.Subtype)) + geom_bar() + labs(x="Offense Subtype", y="Count", title="Count of Offenses by Subtype") + coord_flip()
+```
+Trafficking is very high relative to its nearest competitors, which are assault and burglary.
+```{r}
+ggplot(df, aes(x=New.Offense.Type)) + geom_bar() + labs(x="New Offense Type", y="Count", title="Count of New Offenses by Type") + coord_flip()
+```
+We can see the vast majority of new offense types are empty values. Since these are so common, it is likely a mixture of non-reoffenders and those who reoffended with the same offense type. Besides empty values, drug and property offenses are most common.
+
+What about subtypes?
+```{r}
+ggplot(df, aes(x=New.Offense.Sub.Type)) + geom_bar() + labs(x="New Offense Subtype", y="Count", title="Count of New Offenses by Subtype") + coord_flip()
+```
+Again, the empty factor is by far the most common, followed by trafficking, theft, then assault.
+
+Now, let's look at distribuitions for Sex, Day.to.Return, and Age.at.Release.
+```{r}
+ggplot(df, aes(x=Sex)) + geom_bar() + labs(x="Sex", y="Count", title="Count of Offenders by Sex") + coord_flip()
+```
+Mostly male.
+
+```{r}
+days.mean = mean(df$Days.to.Return, na.rm=TRUE)
+ggplot(df, aes(x=Days.to.Return)) + geom_histogram() + labs(x="Days to Return", y="Count", title="Distribution of Offenders by Days to Return") + geom_vline(xintercept = days.mean,colour="blue")
+```
+It looks like we have a right skewed distribution of days until return to prison with a mean of ~470.
+
+```{r}
+ggplot(df, aes(x=Age.At.Release)) + geom_bar() + labs(x="Age at Release", y="Count", title="Count of Offenders by Age Group at Release")
+```
+```
+So, most offenders are 25-34 with the next highest group being 35-44.
+
+
