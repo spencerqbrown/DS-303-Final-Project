@@ -1,0 +1,99 @@
+---
+title: "final_project_reg_question"
+author: "Max Ruehle"
+date: "October 25, 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Read in the data.
+```{r}
+df = read.csv("data_cleaned.csv")
+```
+
+
+# Days Until Reinstatement (Regression)
+
+One big question that we hope to be answered by this dataset is, given a prisoner eventually returns to prison, how many days will it be until they return?
+
+Let's first look at how many prisoners actually returned to prison in this three-year span:
+
+```{r}
+barplot(table(df$Return.to.Prison), main = "Return to Prison?", names.arg = c("No", "Yes"))
+
+library(dplyr)
+
+count(df, Return.to.Prison)
+```
+
+We can see that of the 26,020 prisoners released, 8,681 ended up returning to prison within the three-year span.
+
+Since we only want to look at those that returned, we can now subset the data:
+
+```{r}
+df = filter(df, Return.to.Prison == TRUE)
+count(df)
+```
+
+Now, we can subset the columns that are important for building our regression model and because they are all categorical data, we can turn them into factor variables for extra insurance:
+
+Note: I do believe that Offense.Subtype is important in the model, but the sake of it having 26 different factor levels, I have left it out for now.
+
+```{r}
+df = select(df, Release.Type, Race...Ethnicity, Age.At.Release, Sex, Offense.Classification, Offense.Type,  Recidivism.Type, Days.to.Return)
+
+df$Release.Type = factor(df$Release.Type)
+df$Race...Ethnicity = factor(df$Race...Ethnicity)
+df$Age.At.Release = factor(df$Age.At.Release)
+df$Sex = factor(df$Sex)
+df$Offense.Classification = factor(df$Offense.Classification)
+df$Offense.Type = factor(df$Offense.Type)
+df$Recidivism.Type = factor(df$Recidivism.Type)
+```
+
+
+First, let's take a very simple model using just the Sex of the offenders. This will give us an idea of how our models will work.
+```{r}
+contrasts(df$Sex)
+
+summary(lm(Days.to.Return~Sex, data = df))
+```
+
+This isn't too difficult to understand. Our model simply says if the offender is female, the value for SexMale will be 0, giving us a Days.to.Return value of approximately 457 days. Compare this to if the offender is Male, the Days.to.Return value would be about 471 days.
+
+Now, we obviously cannot use this model for many reasons, one of them being the p-value we get from our chosen factor is 0.131, which is quite high.
+
+
+Let's build a new model using Sex, Offense Type, and Recidivism Type:
+
+```{r}
+contrasts(df$Sex)
+contrasts(df$Offense.Type)
+contrasts(df$Recidivism.Type)
+
+summary(lm(Days.to.Return~Sex + Offense.Type + Recidivism.Type, data = df))
+```
+
+We can see that this model is quite an improvement over the last one. Let's split our data to get our test MSE.
+
+```{r}
+n = dim(df)[1]
+train_index = sample(1:n,n/2,rep=FALSE)
+train_df = df[train_index,]
+test_df = df[-train_index,]
+
+fit = lm(Days.to.Return~Sex + Offense.Type + Recidivism.Type, data = train_df)
+
+X_test = test_df[,-8]
+predicted_values = predict(fit, X_test)
+sum((test_df$Days.to.Return - predicted_values)^2)/(n/2)
+```
+
+This test MSE is obviously very high. Continuing, I will use stepwise selection to fine tune my model.
+
+
+
+
