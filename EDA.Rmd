@@ -126,7 +126,54 @@ It looks like we have a right skewed distribution of days until return to prison
 ```{r}
 ggplot(df, aes(x=Age.At.Release)) + geom_bar() + labs(x="Age at Release", y="Count", title="Count of Offenders by Age Group at Release")
 ```
-```
 So, most offenders are 25-34 with the next highest group being 35-44.
 
+
+# Recidivism classifier
+One question that the topic of the data is begging to be asked is if we can predict whether someone released will return to prison within the three year time frame of the data. First, let's see what proportion returned:
+```{r}
+sum(df$Return.to.Prison) / length(df$Return.to.Prison)
+```
+So around a third of prisoners returned within three years. 
+
+Let's consider what values are useful for predicting Return.to.Prison. There are some variables we will need to consider altering, combining, or perhaps dropping, like Main.Supervising.District (MSD), which appears to be correlated with Release.Type (i.e., there is often no MSD when a prisoner is put on parole). Similar correlation is present in Target.Population. We will save these for later. Fiscal.Year.Released and Recidivism.Reporting.Year are 2010 and 2013 respectively for all inmates, since they are only labels of the dataset itself, so we will not use them for the model. Additionally, we are predicting whether recidivism will occur, so we will not include variables that confirm it, meaning any new-offense-related variables. These include: Days.to.Return, Recidivism.Type, New.Offense.Classification, New.Offense.Type, and New.Offense.Sub.Type. A non-null value for any of these would, of course, confirm recidivism. We will hold off on excluding or combining the potentially correlated variables, Main.Supervising.District, Release.Type, and Target.Population, for now. We can later perform Chi-squared tests of independence on them. We will tentatively include them in the model. Below we also drop the single row with the value Interstate Compact Parole in Release.Type, as it is the only row with that value.
+
+Before we fit the model, we will remove some rows with very rare values. While it is possible that these values may be good predictors, they are very rare (1-2 instances), so will not be especially useful in predicting the vast majority of cases. They also tend to cause issues when splitting training and testing sets.
+```{r}
+# drop rows with very rare values (<3)
+length(df$Release.Type)
+indices_to_remove = vector()
+indices_to_remove = append(indices_to_remove, which(df$Release.Type=="Interstate Compact Parole"))
+indices_to_remove = append(indices_to_remove, which(df$Age.At.Release==""))
+indices_to_remove = append(indices_to_remove, which(df$Race...Ethnicity=="Black -"))
+indices_to_remove = append(indices_to_remove, which(df$Race...Ethnicity=="N/A -"))
+indices_to_remove = append(indices_to_remove, which(df$Offense.Classification=="Other Misdemeanor"))
+indices_to_remove = append(indices_to_remove, which(df$Offense.Classification=="Sexual Predator Community Supervision"))
+indices_to_remove = append(indices_to_remove, which(df$Offense.Classification=="Other Felony (Old Code)"))
+df = df[-c(indices_to_remove),]
+length(df$Release.Type)
+```
+
+Now, let's look at a full model using all of our potentially useful variables:
+```{r}
+# first, train test split
+set.seed(20)
+train = sample(1:nrow(df),2*nrow(df)/3, replace=FALSE)
+test = (-train)
+
+# fit the model
+model.fit = glm(Return.to.Prison~Main.Supervising.District+Release.Type+Race...Ethnicity+Age.At.Release+Sex+Offense.Classification+Offense.Subtype, family="binomial", data=df, subset=train)
+#summary(model.fit)
+```
+Uncomment the summary line if necessary. Here it is commented out because it is very long. Note that there are many many coefficients. This is because every variable is either boolean or categorical, and most of the categorical variables have several categories, resulting in a huge number of coefficients. Now, let's look at our actual predictions.
+```{r}
+model.prob = predict(model.fit, df[test,],type='response')
+head(model.prob)
+model.pred = rep(FALSE, nrow(df)-length(test))
+model.pred[model.prob >0.5] = TRUE
+table(model.pred, df[test,]$Return.to.Prison)
+1-mean(model.pred == df[test,]$Return.to.Prison)
+```
+
+Not a fantastic accuracy, around 1/3. Next, we'll need to tune the model to see if we can improve it.
 
