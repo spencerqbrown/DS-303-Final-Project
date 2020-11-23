@@ -215,7 +215,7 @@ count(df)</code></pre>
 ## 1 8681</code></pre>
 <p>Now, we can subset the columns that are important for building our regression model and because they are all categorical data, we can turn them into factor variables for extra insurance:</p>
 <p>Note: I do believe that Offense.Subtype is important in the model, but the sake of it having 26 different factor levels, I have left it out for now.</p>
-<pre class="r"><code>df = select(df, Release.Type, Race...Ethnicity, Age.At.Release, Sex, Offense.Classification, Offense.Type,  Recidivism.Type, Days.to.Return)
+<pre class="r"><code>df = select(df, Release.Type, Race...Ethnicity, Age.At.Release, Sex, Offense.Classification, Offense.Type, Offense.Subtype, Recidivism.Type, Days.to.Return)
 
 df$Release.Type = factor(df$Release.Type)
 df$Race...Ethnicity = factor(df$Race...Ethnicity)
@@ -223,6 +223,7 @@ df$Age.At.Release = factor(df$Age.At.Release)
 df$Sex = factor(df$Sex)
 df$Offense.Classification = factor(df$Offense.Classification)
 df$Offense.Type = factor(df$Offense.Type)
+df$Offense.Subtype = factor(df$Offense.Subtype)
 df$Recidivism.Type = factor(df$Recidivism.Type)</code></pre>
 <p>First, let's take a very simple model using just the Sex of the offenders. This will give us an idea of how our models will work.</p>
 <pre class="r"><code>contrasts(df$Sex)</code></pre>
@@ -293,17 +294,848 @@ df$Recidivism.Type = factor(df$Recidivism.Type)</code></pre>
 ## F-statistic: 130.2 on 6 and 8674 DF,  p-value: &lt; 2.2e-16</code></pre>
 <p>We can see that this model is quite an improvement over the last one. Let's split our data to get our test MSE.</p>
 <pre class="r"><code>n = dim(df)[1]
-train_index = sample(1:n,n/2,rep=FALSE)
+train_index = sample(1:n,7000,rep=FALSE)
 train_df = df[train_index,]
 test_df = df[-train_index,]
 
 fit = lm(Days.to.Return~Sex + Offense.Type + Recidivism.Type, data = train_df)
 
-X_test = test_df[,-8]
+X_test = test_df[,-9]
 predicted_values = predict(fit, X_test)
 sum((test_df$Days.to.Return - predicted_values)^2)/(n/2)</code></pre>
-<pre><code>## [1] 73035.75</code></pre>
-<p>This test MSE is obviously very high. Continuing, I will use stepwise selection to fine tune my model.</p>
+<pre><code>## [1] 30235.38</code></pre>
+<p>We would like to get a better model than this. The reason for doing so is that we essentially just chose three variables that we thought could be good. But now, by using Stepwise selection, we can create a much better model that is more efficient and only keeps in the factors that go into determining recidivism.</p>
+<pre class="r"><code>model0 = lm(Days.to.Return~1,data=df)
+summary(model0)</code></pre>
+<pre><code>## 
+## Call:
+## lm(formula = Days.to.Return ~ 1, data = df)
+## 
+## Residuals:
+##     Min      1Q  Median      3Q     Max 
+## -469.93 -231.93  -51.93  212.07  625.07 
+## 
+## Coefficients:
+##             Estimate Std. Error t value Pr(&gt;|t|)    
+## (Intercept)   469.93       3.03   155.1   &lt;2e-16 ***
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+## 
+## Residual standard error: 282.3 on 8680 degrees of freedom</code></pre>
+<pre class="r"><code>modelfull = lm(Days.to.Return~.,data=df)
+summary(modelfull)</code></pre>
+<pre><code>## 
+## Call:
+## lm(formula = Days.to.Return ~ ., data = df)
+## 
+## Residuals:
+##     Min      1Q  Median      3Q     Max 
+## -596.04 -210.01  -48.46  189.60  781.92 
+## 
+## Coefficients: (3 not defined because of singularities)
+##                                                                  Estimate
+## (Intercept)                                                      618.0137
+## Release.TypeDischarged - Expiration of Sentence                  -22.4076
+## Release.TypeDischarged â\200“ End of Sentence                       -42.4193
+## Release.TypeParole                                              -131.1964
+## Release.TypeParole Granted                                      -130.9632
+## Release.TypeParoled to Detainer - INS                           -117.3768
+## Release.TypeParoled to Detainer - Iowa                          -181.7677
+## Release.TypeParoled to Detainer - Out of State                     0.4013
+## Release.TypeParoled to Detainer - U.S. Marshall                  195.4165
+## Release.TypeParoled w/Immediate Discharge                        -40.7595
+## Release.TypeReleased to Special Sentence                        -152.1727
+## Release.TypeSpecial Sentence                                    -124.1422
+## Race...EthnicityAmerican Indian or Alaska Native - Non-Hispanic  -17.5900
+## Race...EthnicityAsian or Pacific Islander - Hispanic             -98.4975
+## Race...EthnicityAsian or Pacific Islander - Non-Hispanic          40.6296
+## Race...EthnicityBlack - Hispanic                                 -60.7366
+## Race...EthnicityBlack - Non-Hispanic                              35.2115
+## Race...EthnicityWhite -                                         -222.9704
+## Race...EthnicityWhite - Hispanic                                  35.2874
+## Race...EthnicityWhite - Non-Hispanic                              11.7620
+## Age.At.Release35-44                                               12.4694
+## Age.At.Release45-54                                               -4.0735
+## Age.At.Release55 and Older                                       -30.0990
+## Age.At.ReleaseUnder 25                                           -22.7302
+## SexMale                                                          -16.7933
+## Offense.ClassificationB Felony                                    66.8327
+## Offense.ClassificationC Felony                                    44.2253
+## Offense.ClassificationD Felony                                     9.8938
+## Offense.ClassificationFelony - Enhanced                           82.6300
+## Offense.ClassificationFelony - Enhancement to Original Penalty    72.7567
+## Offense.ClassificationFelony - Mandatory Minimum                -273.0656
+## Offense.ClassificationOther Felony                               450.5958
+## Offense.ClassificationSerious Misdemeanor                        -46.0852
+## Offense.ClassificationSpecial Sentence 2005                      -21.0602
+## Offense.TypeOther                                                -16.8851
+## Offense.TypeProperty                                              17.8515
+## Offense.TypePublic Order                                         -86.7837
+## Offense.TypeViolent                                             -144.4912
+## Offense.SubtypeAnimals                                          -159.2035
+## Offense.SubtypeArson                                             -85.1069
+## Offense.SubtypeAssault                                           138.4664
+## Offense.SubtypeBurglary                                          -42.5165
+## Offense.SubtypeDrug Possession                                   -23.7634
+## Offense.SubtypeFlight/Escape                                      31.5020
+## Offense.SubtypeForgery/Fraud                                     -48.5535
+## Offense.SubtypeKidnap                                              2.8630
+## Offense.SubtypeMurder/Manslaughter                               183.7490
+## Offense.SubtypeOther Criminal                                    -20.5501
+## Offense.SubtypeOther Drug                                        -25.5779
+## Offense.SubtypeOther Public Order                                  2.5563
+## Offense.SubtypeOther Violent                                     176.3270
+## Offense.SubtypeOWI                                                76.0346
+## Offense.SubtypeProstitution/Pimping                              -41.9433
+## Offense.SubtypeRobbery                                            98.3425
+## Offense.SubtypeSex                                               122.2030
+## Offense.SubtypeSex Offender Registry/Residency                    -7.5047
+## Offense.SubtypeSpecial Sentence Revocation                             NA
+## Offense.SubtypeStolen Property                                  -293.4326
+## Offense.SubtypeTheft                                             -38.5557
+## Offense.SubtypeTraffic                                            84.3158
+## Offense.SubtypeTrafficking                                             NA
+## Offense.SubtypeVandalism                                               NA
+## Offense.SubtypeWeapons                                            80.2587
+## Recidivism.TypeTech                                             -146.8492
+##                                                                 Std. Error
+## (Intercept)                                                       110.6181
+## Release.TypeDischarged - Expiration of Sentence                    18.3315
+## Release.TypeDischarged â\200“ End of Sentence                         16.8207
+## Release.TypeParole                                                 16.0554
+## Release.TypeParole Granted                                         16.4348
+## Release.TypeParoled to Detainer - INS                             134.6574
+## Release.TypeParoled to Detainer - Iowa                             45.8675
+## Release.TypeParoled to Detainer - Out of State                     43.5462
+## Release.TypeParoled to Detainer - U.S. Marshall                   120.1717
+## Release.TypeParoled w/Immediate Discharge                          34.7955
+## Release.TypeReleased to Special Sentence                           25.6374
+## Release.TypeSpecial Sentence                                       28.6598
+## Race...EthnicityAmerican Indian or Alaska Native - Non-Hispanic   110.8779
+## Race...EthnicityAsian or Pacific Islander - Hispanic              218.1290
+## Race...EthnicityAsian or Pacific Islander - Non-Hispanic          116.4890
+## Race...EthnicityBlack - Hispanic                                  135.8178
+## Race...EthnicityBlack - Non-Hispanic                              109.4146
+## Race...EthnicityWhite -                                           288.0485
+## Race...EthnicityWhite - Hispanic                                  110.2296
+## Race...EthnicityWhite - Non-Hispanic                              109.3025
+## Age.At.Release35-44                                                 7.5735
+## Age.At.Release45-54                                                 9.1179
+## Age.At.Release55 and Older                                         17.6019
+## Age.At.ReleaseUnder 25                                              8.1039
+## SexMale                                                             9.4593
+## Offense.ClassificationB Felony                                     15.9943
+## Offense.ClassificationC Felony                                     11.1566
+## Offense.ClassificationD Felony                                      9.4647
+## Offense.ClassificationFelony - Enhanced                            31.9087
+## Offense.ClassificationFelony - Enhancement to Original Penalty     16.4847
+## Offense.ClassificationFelony - Mandatory Minimum                  155.3818
+## Offense.ClassificationOther Felony                                155.0159
+## Offense.ClassificationSerious Misdemeanor                          40.0582
+## Offense.ClassificationSpecial Sentence 2005                        41.9539
+## Offense.TypeOther                                                  56.6791
+## Offense.TypeProperty                                               27.9023
+## Offense.TypePublic Order                                           25.9751
+## Offense.TypeViolent                                                87.4732
+## Offense.SubtypeAnimals                                            272.5801
+## Offense.SubtypeArson                                               49.3722
+## Offense.SubtypeAssault                                             87.6919
+## Offense.SubtypeBurglary                                            27.9093
+## Offense.SubtypeDrug Possession                                     15.7930
+## Offense.SubtypeFlight/Escape                                       49.4501
+## Offense.SubtypeForgery/Fraud                                       29.8404
+## Offense.SubtypeKidnap                                             128.1721
+## Offense.SubtypeMurder/Manslaughter                                 93.7278
+## Offense.SubtypeOther Criminal                                      56.8745
+## Offense.SubtypeOther Drug                                          29.9221
+## Offense.SubtypeOther Public Order                                  34.9976
+## Offense.SubtypeOther Violent                                       84.4653
+## Offense.SubtypeOWI                                                 27.5204
+## Offense.SubtypeProstitution/Pimping                                84.0521
+## Offense.SubtypeRobbery                                             92.2935
+## Offense.SubtypeSex                                                 86.0712
+## Offense.SubtypeSex Offender Registry/Residency                     49.1719
+## Offense.SubtypeSpecial Sentence Revocation                              NA
+## Offense.SubtypeStolen Property                                    135.8799
+## Offense.SubtypeTheft                                               28.1201
+## Offense.SubtypeTraffic                                             31.5395
+## Offense.SubtypeTrafficking                                              NA
+## Offense.SubtypeVandalism                                                NA
+## Offense.SubtypeWeapons                                             35.2182
+## Recidivism.TypeTech                                                 6.4917
+##                                                                 t value
+## (Intercept)                                                       5.587
+## Release.TypeDischarged - Expiration of Sentence                  -1.222
+## Release.TypeDischarged â\200“ End of Sentence                       -2.522
+## Release.TypeParole                                               -8.171
+## Release.TypeParole Granted                                       -7.969
+## Release.TypeParoled to Detainer - INS                            -0.872
+## Release.TypeParoled to Detainer - Iowa                           -3.963
+## Release.TypeParoled to Detainer - Out of State                    0.009
+## Release.TypeParoled to Detainer - U.S. Marshall                   1.626
+## Release.TypeParoled w/Immediate Discharge                        -1.171
+## Release.TypeReleased to Special Sentence                         -5.936
+## Release.TypeSpecial Sentence                                     -4.332
+## Race...EthnicityAmerican Indian or Alaska Native - Non-Hispanic  -0.159
+## Race...EthnicityAsian or Pacific Islander - Hispanic             -0.452
+## Race...EthnicityAsian or Pacific Islander - Non-Hispanic          0.349
+## Race...EthnicityBlack - Hispanic                                 -0.447
+## Race...EthnicityBlack - Non-Hispanic                              0.322
+## Race...EthnicityWhite -                                          -0.774
+## Race...EthnicityWhite - Hispanic                                  0.320
+## Race...EthnicityWhite - Non-Hispanic                              0.108
+## Age.At.Release35-44                                               1.646
+## Age.At.Release45-54                                              -0.447
+## Age.At.Release55 and Older                                       -1.710
+## Age.At.ReleaseUnder 25                                           -2.805
+## SexMale                                                          -1.775
+## Offense.ClassificationB Felony                                    4.179
+## Offense.ClassificationC Felony                                    3.964
+## Offense.ClassificationD Felony                                    1.045
+## Offense.ClassificationFelony - Enhanced                           2.590
+## Offense.ClassificationFelony - Enhancement to Original Penalty    4.414
+## Offense.ClassificationFelony - Mandatory Minimum                 -1.757
+## Offense.ClassificationOther Felony                                2.907
+## Offense.ClassificationSerious Misdemeanor                        -1.150
+## Offense.ClassificationSpecial Sentence 2005                      -0.502
+## Offense.TypeOther                                                -0.298
+## Offense.TypeProperty                                              0.640
+## Offense.TypePublic Order                                         -3.341
+## Offense.TypeViolent                                              -1.652
+## Offense.SubtypeAnimals                                           -0.584
+## Offense.SubtypeArson                                             -1.724
+## Offense.SubtypeAssault                                            1.579
+## Offense.SubtypeBurglary                                          -1.523
+## Offense.SubtypeDrug Possession                                   -1.505
+## Offense.SubtypeFlight/Escape                                      0.637
+## Offense.SubtypeForgery/Fraud                                     -1.627
+## Offense.SubtypeKidnap                                             0.022
+## Offense.SubtypeMurder/Manslaughter                                1.960
+## Offense.SubtypeOther Criminal                                    -0.361
+## Offense.SubtypeOther Drug                                        -0.855
+## Offense.SubtypeOther Public Order                                 0.073
+## Offense.SubtypeOther Violent                                      2.088
+## Offense.SubtypeOWI                                                2.763
+## Offense.SubtypeProstitution/Pimping                              -0.499
+## Offense.SubtypeRobbery                                            1.066
+## Offense.SubtypeSex                                                1.420
+## Offense.SubtypeSex Offender Registry/Residency                   -0.153
+## Offense.SubtypeSpecial Sentence Revocation                           NA
+## Offense.SubtypeStolen Property                                   -2.160
+## Offense.SubtypeTheft                                             -1.371
+## Offense.SubtypeTraffic                                            2.673
+## Offense.SubtypeTrafficking                                           NA
+## Offense.SubtypeVandalism                                             NA
+## Offense.SubtypeWeapons                                            2.279
+## Recidivism.TypeTech                                             -22.621
+##                                                                 Pr(&gt;|t|)    
+## (Intercept)                                                     2.38e-08 ***
+## Release.TypeDischarged - Expiration of Sentence                 0.221607    
+## Release.TypeDischarged â\200“ End of Sentence                      0.011692 *  
+## Release.TypeParole                                              3.48e-16 ***
+## Release.TypeParole Granted                                      1.81e-15 ***
+## Release.TypeParoled to Detainer - INS                           0.383413    
+## Release.TypeParoled to Detainer - Iowa                          7.46e-05 ***
+## Release.TypeParoled to Detainer - Out of State                  0.992647    
+## Release.TypeParoled to Detainer - U.S. Marshall                 0.103956    
+## Release.TypeParoled w/Immediate Discharge                       0.241469    
+## Release.TypeReleased to Special Sentence                        3.04e-09 ***
+## Release.TypeSpecial Sentence                                    1.50e-05 ***
+## Race...EthnicityAmerican Indian or Alaska Native - Non-Hispanic 0.873954    
+## Race...EthnicityAsian or Pacific Islander - Hispanic            0.651600    
+## Race...EthnicityAsian or Pacific Islander - Non-Hispanic        0.727259    
+## Race...EthnicityBlack - Hispanic                                0.654748    
+## Race...EthnicityBlack - Non-Hispanic                            0.747599    
+## Race...EthnicityWhite -                                         0.438909    
+## Race...EthnicityWhite - Hispanic                                0.748880    
+## Race...EthnicityWhite - Non-Hispanic                            0.914308    
+## Age.At.Release35-44                                             0.099708 .  
+## Age.At.Release45-54                                             0.655060    
+## Age.At.Release55 and Older                                      0.087304 .  
+## Age.At.ReleaseUnder 25                                          0.005045 ** 
+## SexMale                                                         0.075881 .  
+## Offense.ClassificationB Felony                                  2.96e-05 ***
+## Offense.ClassificationC Felony                                  7.43e-05 ***
+## Offense.ClassificationD Felony                                  0.295896    
+## Offense.ClassificationFelony - Enhanced                         0.009626 ** 
+## Offense.ClassificationFelony - Enhancement to Original Penalty  1.03e-05 ***
+## Offense.ClassificationFelony - Mandatory Minimum                0.078888 .  
+## Offense.ClassificationOther Felony                              0.003661 ** 
+## Offense.ClassificationSerious Misdemeanor                       0.249987    
+## Offense.ClassificationSpecial Sentence 2005                     0.615691    
+## Offense.TypeOther                                               0.765782    
+## Offense.TypeProperty                                            0.522328    
+## Offense.TypePublic Order                                        0.000838 ***
+## Offense.TypeViolent                                             0.098605 .  
+## Offense.SubtypeAnimals                                          0.559194    
+## Offense.SubtypeArson                                            0.084783 .  
+## Offense.SubtypeAssault                                          0.114370    
+## Offense.SubtypeBurglary                                         0.127700    
+## Offense.SubtypeDrug Possession                                  0.132444    
+## Offense.SubtypeFlight/Escape                                    0.524112    
+## Offense.SubtypeForgery/Fraud                                    0.103751    
+## Offense.SubtypeKidnap                                           0.982180    
+## Offense.SubtypeMurder/Manslaughter                              0.049975 *  
+## Offense.SubtypeOther Criminal                                   0.717867    
+## Offense.SubtypeOther Drug                                       0.392677    
+## Offense.SubtypeOther Public Order                               0.941775    
+## Offense.SubtypeOther Violent                                    0.036866 *  
+## Offense.SubtypeOWI                                              0.005742 ** 
+## Offense.SubtypeProstitution/Pimping                             0.617781    
+## Offense.SubtypeRobbery                                          0.286661    
+## Offense.SubtypeSex                                              0.155705    
+## Offense.SubtypeSex Offender Registry/Residency                  0.878700    
+## Offense.SubtypeSpecial Sentence Revocation                            NA    
+## Offense.SubtypeStolen Property                                  0.030839 *  
+## Offense.SubtypeTheft                                            0.170377    
+## Offense.SubtypeTraffic                                          0.007524 ** 
+## Offense.SubtypeTrafficking                                            NA    
+## Offense.SubtypeVandalism                                              NA    
+## Offense.SubtypeWeapons                                          0.022697 *  
+## Recidivism.TypeTech                                              &lt; 2e-16 ***
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+## 
+## Residual standard error: 266.2 on 8620 degrees of freedom
+## Multiple R-squared:  0.1171, Adjusted R-squared:  0.111 
+## F-statistic: 19.06 on 60 and 8620 DF,  p-value: &lt; 2.2e-16</code></pre>
+<pre class="r"><code>step(model0,scope=list(lower=model0,upper=modelfull),direction=&quot;forward&quot;)</code></pre>
+<pre><code>## Start:  AIC=97974.46
+## Days.to.Return ~ 1
+## 
+##                          Df Sum of Sq       RSS   AIC
+## + Recidivism.Type         1  55071990 636682194 97256
+## + Release.Type           11  30564983 661189201 97604
+## + Offense.Subtype        25   6832289 684921896 97938
+## + Offense.Classification  9   2983240 688770944 97955
+## + Race...Ethnicity        8   2418634 689335550 97960
+## + Age.At.Release          4   1292006 690462178 97966
+## + Offense.Type            4    887981 690866203 97971
+## + Sex                     1    181424 691572760 97974
+## &lt;none&gt;                                691754184 97974
+## 
+## Step:  AIC=97256.28
+## Days.to.Return ~ Recidivism.Type
+## 
+##                          Df Sum of Sq       RSS   AIC
+## + Release.Type           11  10875678 625806516 97129
+## + Offense.Classification  9   4620605 632061589 97211
+## + Offense.Subtype        25   5862132 630820062 97226
+## + Offense.Type            4   2058565 634623630 97236
+## + Age.At.Release          4   1493190 635189004 97244
+## + Race...Ethnicity        8   1551887 635130307 97251
+## &lt;none&gt;                                636682194 97256
+## + Sex                     1     14011 636668183 97258
+## 
+## Step:  AIC=97128.71
+## Days.to.Return ~ Recidivism.Type + Release.Type
+## 
+##                          Df Sum of Sq       RSS   AIC
+## + Offense.Classification  9   8151091 617655425 97033
+## + Offense.Subtype        25   8131635 617674881 97065
+## + Offense.Type            4   3676286 622130230 97086
+## + Age.At.Release          4   1819704 623986812 97111
+## + Race...Ethnicity        8   1480943 624325574 97124
+## &lt;none&gt;                                625806516 97129
+## + Sex                     1     64989 625741527 97130
+## 
+## Step:  AIC=97032.9
+## Days.to.Return ~ Recidivism.Type + Release.Type + Offense.Classification
+## 
+##                    Df Sum of Sq       RSS   AIC
+## + Age.At.Release    4   1229060 616426365 97024
+## + Offense.Subtype  25   3977539 613677886 97027
+## + Offense.Type      4    861033 616794392 97029
+## + Race...Ethnicity  8   1283961 616371465 97031
+## + Sex               1    179246 617476179 97032
+## &lt;none&gt;                          617655425 97033
+## 
+## Step:  AIC=97023.61
+## Days.to.Return ~ Recidivism.Type + Release.Type + Offense.Classification + 
+##     Age.At.Release
+## 
+##                    Df Sum of Sq       RSS   AIC
+## + Offense.Subtype  25   3951560 612474805 97018
+## + Race...Ethnicity  8   1417421 615008945 97020
+## + Offense.Type      4    786168 615640197 97021
+## &lt;none&gt;                          616426365 97024
+## + Sex               1    114612 616311753 97024
+## 
+## Step:  AIC=97017.78
+## Days.to.Return ~ Recidivism.Type + Release.Type + Offense.Classification + 
+##     Age.At.Release + Offense.Subtype
+## 
+##                    Df Sum of Sq       RSS   AIC
+## + Race...Ethnicity  8   1273924 611200881 97016
+## + Offense.Type      1    240828 612233977 97016
+## + Sex               1    170966 612303839 97017
+## &lt;none&gt;                          612474805 97018
+## 
+## Step:  AIC=97015.71
+## Days.to.Return ~ Recidivism.Type + Release.Type + Offense.Classification + 
+##     Age.At.Release + Offense.Subtype + Race...Ethnicity
+## 
+##                Df Sum of Sq       RSS   AIC
+## + Offense.Type  1    251024 610949857 97014
+## + Sex           1    213912 610986969 97015
+## &lt;none&gt;                      611200881 97016
+## 
+## Step:  AIC=97014.14
+## Days.to.Return ~ Recidivism.Type + Release.Type + Offense.Classification + 
+##     Age.At.Release + Offense.Subtype + Race...Ethnicity + Offense.Type
+## 
+##        Df Sum of Sq       RSS   AIC
+## + Sex   1    223300 610726556 97013
+## &lt;none&gt;              610949857 97014
+## 
+## Step:  AIC=97012.97
+## Days.to.Return ~ Recidivism.Type + Release.Type + Offense.Classification + 
+##     Age.At.Release + Offense.Subtype + Race...Ethnicity + Offense.Type + 
+##     Sex</code></pre>
+<pre><code>## 
+## Call:
+## lm(formula = Days.to.Return ~ Recidivism.Type + Release.Type + 
+##     Offense.Classification + Age.At.Release + Offense.Subtype + 
+##     Race...Ethnicity + Offense.Type + Sex, data = df)
+## 
+## Coefficients:
+##                                                     (Intercept)  
+##                                                        531.2301  
+##                                             Recidivism.TypeTech  
+##                                                       -146.8492  
+##                 Release.TypeDischarged - Expiration of Sentence  
+##                                                        -22.4076  
+##                      Release.TypeDischarged â\200“ End of Sentence  
+##                                                        -42.4193  
+##                                              Release.TypeParole  
+##                                                       -131.1964  
+##                                      Release.TypeParole Granted  
+##                                                       -130.9632  
+##                           Release.TypeParoled to Detainer - INS  
+##                                                       -117.3768  
+##                          Release.TypeParoled to Detainer - Iowa  
+##                                                       -181.7677  
+##                  Release.TypeParoled to Detainer - Out of State  
+##                                                          0.4013  
+##                 Release.TypeParoled to Detainer - U.S. Marshall  
+##                                                        195.4165  
+##                       Release.TypeParoled w/Immediate Discharge  
+##                                                        -40.7595  
+##                        Release.TypeReleased to Special Sentence  
+##                                                       -152.1727  
+##                                    Release.TypeSpecial Sentence  
+##                                                       -124.1422  
+##                                  Offense.ClassificationB Felony  
+##                                                         66.8327  
+##                                  Offense.ClassificationC Felony  
+##                                                         44.2253  
+##                                  Offense.ClassificationD Felony  
+##                                                          9.8938  
+##                         Offense.ClassificationFelony - Enhanced  
+##                                                         82.6300  
+##  Offense.ClassificationFelony - Enhancement to Original Penalty  
+##                                                         72.7567  
+##                Offense.ClassificationFelony - Mandatory Minimum  
+##                                                       -273.0656  
+##                              Offense.ClassificationOther Felony  
+##                                                        450.5958  
+##                       Offense.ClassificationSerious Misdemeanor  
+##                                                        -46.0852  
+##                     Offense.ClassificationSpecial Sentence 2005  
+##                                                        -21.0602  
+##                                             Age.At.Release35-44  
+##                                                         12.4694  
+##                                             Age.At.Release45-54  
+##                                                         -4.0735  
+##                                      Age.At.Release55 and Older  
+##                                                        -30.0990  
+##                                          Age.At.ReleaseUnder 25  
+##                                                        -22.7302  
+##                                          Offense.SubtypeAnimals  
+##                                                       -216.9111  
+##                                            Offense.SubtypeArson  
+##                                                         19.5283  
+##                                          Offense.SubtypeAssault  
+##                                                         80.7588  
+##                                         Offense.SubtypeBurglary  
+##                                                         62.1188  
+##                                  Offense.SubtypeDrug Possession  
+##                                                         63.0202  
+##                                    Offense.SubtypeFlight/Escape  
+##                                                         31.5020  
+##                                    Offense.SubtypeForgery/Fraud  
+##                                                         56.0818  
+##                                           Offense.SubtypeKidnap  
+##                                                        -54.8446  
+##                              Offense.SubtypeMurder/Manslaughter  
+##                                                        126.0414  
+##                                   Offense.SubtypeOther Criminal  
+##                                                        -78.2576  
+##                                       Offense.SubtypeOther Drug  
+##                                                         61.2058  
+##                               Offense.SubtypeOther Public Order  
+##                                                          2.5563  
+##                                    Offense.SubtypeOther Violent  
+##                                                        118.6194  
+##                                              Offense.SubtypeOWI  
+##                                                         76.0346  
+##                             Offense.SubtypeProstitution/Pimping  
+##                                                        -41.9433  
+##                                          Offense.SubtypeRobbery  
+##                                                         40.6349  
+##                                              Offense.SubtypeSex  
+##                                                         64.4954  
+##                  Offense.SubtypeSex Offender Registry/Residency  
+##                                                         -7.5047  
+##                      Offense.SubtypeSpecial Sentence Revocation  
+##                                                        -57.7076  
+##                                  Offense.SubtypeStolen Property  
+##                                                       -188.7974  
+##                                            Offense.SubtypeTheft  
+##                                                         66.0795  
+##                                          Offense.SubtypeTraffic  
+##                                                         84.3158  
+##                                      Offense.SubtypeTrafficking  
+##                                                         86.7837  
+##                                        Offense.SubtypeVandalism  
+##                                                        104.6352  
+##                                          Offense.SubtypeWeapons  
+##                                                         80.2587  
+## Race...EthnicityAmerican Indian or Alaska Native - Non-Hispanic  
+##                                                        -17.5900  
+##            Race...EthnicityAsian or Pacific Islander - Hispanic  
+##                                                        -98.4975  
+##        Race...EthnicityAsian or Pacific Islander - Non-Hispanic  
+##                                                         40.6296  
+##                                Race...EthnicityBlack - Hispanic  
+##                                                        -60.7366  
+##                            Race...EthnicityBlack - Non-Hispanic  
+##                                                         35.2115  
+##                                         Race...EthnicityWhite -  
+##                                                       -222.9704  
+##                                Race...EthnicityWhite - Hispanic  
+##                                                         35.2874  
+##                            Race...EthnicityWhite - Non-Hispanic  
+##                                                         11.7620  
+##                                               Offense.TypeOther  
+##                                                        127.6062  
+##                                            Offense.TypeProperty  
+##                                                              NA  
+##                                        Offense.TypePublic Order  
+##                                                              NA  
+##                                             Offense.TypeViolent  
+##                                                              NA  
+##                                                         SexMale  
+##                                                        -16.7933</code></pre>
+<pre class="r"><code>step(modelfull,scope=list(lower=model0,upper=modelfull),direction=&quot;backward&quot;)</code></pre>
+<pre><code>## Start:  AIC=97012.97
+## Days.to.Return ~ Release.Type + Race...Ethnicity + Age.At.Release + 
+##     Sex + Offense.Classification + Offense.Type + Offense.Subtype + 
+##     Recidivism.Type
+## 
+##                          Df Sum of Sq       RSS   AIC
+## &lt;none&gt;                                610726556 97013
+## - Sex                     1    223300 610949857 97014
+## - Offense.Type            1    260413 610986969 97015
+## - Race...Ethnicity        8   1328434 612054990 97016
+## - Offense.Subtype        22   3387088 614113644 97017
+## - Age.At.Release          4   1279970 612006526 97023
+## - Offense.Classification  9   3546942 614273498 97045
+## - Release.Type           11  14936115 625662671 97201
+## - Recidivism.Type         1  36254276 646980832 97512</code></pre>
+<pre><code>## 
+## Call:
+## lm(formula = Days.to.Return ~ Release.Type + Race...Ethnicity + 
+##     Age.At.Release + Sex + Offense.Classification + Offense.Type + 
+##     Offense.Subtype + Recidivism.Type, data = df)
+## 
+## Coefficients:
+##                                                     (Intercept)  
+##                                                        618.0137  
+##                 Release.TypeDischarged - Expiration of Sentence  
+##                                                        -22.4076  
+##                      Release.TypeDischarged â\200“ End of Sentence  
+##                                                        -42.4193  
+##                                              Release.TypeParole  
+##                                                       -131.1964  
+##                                      Release.TypeParole Granted  
+##                                                       -130.9632  
+##                           Release.TypeParoled to Detainer - INS  
+##                                                       -117.3768  
+##                          Release.TypeParoled to Detainer - Iowa  
+##                                                       -181.7677  
+##                  Release.TypeParoled to Detainer - Out of State  
+##                                                          0.4013  
+##                 Release.TypeParoled to Detainer - U.S. Marshall  
+##                                                        195.4165  
+##                       Release.TypeParoled w/Immediate Discharge  
+##                                                        -40.7595  
+##                        Release.TypeReleased to Special Sentence  
+##                                                       -152.1727  
+##                                    Release.TypeSpecial Sentence  
+##                                                       -124.1422  
+## Race...EthnicityAmerican Indian or Alaska Native - Non-Hispanic  
+##                                                        -17.5900  
+##            Race...EthnicityAsian or Pacific Islander - Hispanic  
+##                                                        -98.4975  
+##        Race...EthnicityAsian or Pacific Islander - Non-Hispanic  
+##                                                         40.6296  
+##                                Race...EthnicityBlack - Hispanic  
+##                                                        -60.7366  
+##                            Race...EthnicityBlack - Non-Hispanic  
+##                                                         35.2115  
+##                                         Race...EthnicityWhite -  
+##                                                       -222.9704  
+##                                Race...EthnicityWhite - Hispanic  
+##                                                         35.2874  
+##                            Race...EthnicityWhite - Non-Hispanic  
+##                                                         11.7620  
+##                                             Age.At.Release35-44  
+##                                                         12.4694  
+##                                             Age.At.Release45-54  
+##                                                         -4.0735  
+##                                      Age.At.Release55 and Older  
+##                                                        -30.0990  
+##                                          Age.At.ReleaseUnder 25  
+##                                                        -22.7302  
+##                                                         SexMale  
+##                                                        -16.7933  
+##                                  Offense.ClassificationB Felony  
+##                                                         66.8327  
+##                                  Offense.ClassificationC Felony  
+##                                                         44.2253  
+##                                  Offense.ClassificationD Felony  
+##                                                          9.8938  
+##                         Offense.ClassificationFelony - Enhanced  
+##                                                         82.6300  
+##  Offense.ClassificationFelony - Enhancement to Original Penalty  
+##                                                         72.7567  
+##                Offense.ClassificationFelony - Mandatory Minimum  
+##                                                       -273.0656  
+##                              Offense.ClassificationOther Felony  
+##                                                        450.5958  
+##                       Offense.ClassificationSerious Misdemeanor  
+##                                                        -46.0852  
+##                     Offense.ClassificationSpecial Sentence 2005  
+##                                                        -21.0602  
+##                                               Offense.TypeOther  
+##                                                        -16.8851  
+##                                            Offense.TypeProperty  
+##                                                         17.8515  
+##                                        Offense.TypePublic Order  
+##                                                        -86.7837  
+##                                             Offense.TypeViolent  
+##                                                       -144.4912  
+##                                          Offense.SubtypeAnimals  
+##                                                       -159.2035  
+##                                            Offense.SubtypeArson  
+##                                                        -85.1069  
+##                                          Offense.SubtypeAssault  
+##                                                        138.4664  
+##                                         Offense.SubtypeBurglary  
+##                                                        -42.5165  
+##                                  Offense.SubtypeDrug Possession  
+##                                                        -23.7634  
+##                                    Offense.SubtypeFlight/Escape  
+##                                                         31.5020  
+##                                    Offense.SubtypeForgery/Fraud  
+##                                                        -48.5535  
+##                                           Offense.SubtypeKidnap  
+##                                                          2.8630  
+##                              Offense.SubtypeMurder/Manslaughter  
+##                                                        183.7490  
+##                                   Offense.SubtypeOther Criminal  
+##                                                        -20.5501  
+##                                       Offense.SubtypeOther Drug  
+##                                                        -25.5779  
+##                               Offense.SubtypeOther Public Order  
+##                                                          2.5563  
+##                                    Offense.SubtypeOther Violent  
+##                                                        176.3270  
+##                                              Offense.SubtypeOWI  
+##                                                         76.0346  
+##                             Offense.SubtypeProstitution/Pimping  
+##                                                        -41.9433  
+##                                          Offense.SubtypeRobbery  
+##                                                         98.3425  
+##                                              Offense.SubtypeSex  
+##                                                        122.2030  
+##                  Offense.SubtypeSex Offender Registry/Residency  
+##                                                         -7.5047  
+##                      Offense.SubtypeSpecial Sentence Revocation  
+##                                                              NA  
+##                                  Offense.SubtypeStolen Property  
+##                                                       -293.4326  
+##                                            Offense.SubtypeTheft  
+##                                                        -38.5557  
+##                                          Offense.SubtypeTraffic  
+##                                                         84.3158  
+##                                      Offense.SubtypeTrafficking  
+##                                                              NA  
+##                                        Offense.SubtypeVandalism  
+##                                                              NA  
+##                                          Offense.SubtypeWeapons  
+##                                                         80.2587  
+##                                             Recidivism.TypeTech  
+##                                                       -146.8492</code></pre>
+<pre class="r"><code>step(modelfull,scope=list(lower=model0,upper=modelfull),direction=&quot;both&quot;)</code></pre>
+<pre><code>## Start:  AIC=97012.97
+## Days.to.Return ~ Release.Type + Race...Ethnicity + Age.At.Release + 
+##     Sex + Offense.Classification + Offense.Type + Offense.Subtype + 
+##     Recidivism.Type
+## 
+##                          Df Sum of Sq       RSS   AIC
+## &lt;none&gt;                                610726556 97013
+## - Sex                     1    223300 610949857 97014
+## - Offense.Type            1    260413 610986969 97015
+## - Race...Ethnicity        8   1328434 612054990 97016
+## - Offense.Subtype        22   3387088 614113644 97017
+## - Age.At.Release          4   1279970 612006526 97023
+## - Offense.Classification  9   3546942 614273498 97045
+## - Release.Type           11  14936115 625662671 97201
+## - Recidivism.Type         1  36254276 646980832 97512</code></pre>
+<pre><code>## 
+## Call:
+## lm(formula = Days.to.Return ~ Release.Type + Race...Ethnicity + 
+##     Age.At.Release + Sex + Offense.Classification + Offense.Type + 
+##     Offense.Subtype + Recidivism.Type, data = df)
+## 
+## Coefficients:
+##                                                     (Intercept)  
+##                                                        618.0137  
+##                 Release.TypeDischarged - Expiration of Sentence  
+##                                                        -22.4076  
+##                      Release.TypeDischarged â\200“ End of Sentence  
+##                                                        -42.4193  
+##                                              Release.TypeParole  
+##                                                       -131.1964  
+##                                      Release.TypeParole Granted  
+##                                                       -130.9632  
+##                           Release.TypeParoled to Detainer - INS  
+##                                                       -117.3768  
+##                          Release.TypeParoled to Detainer - Iowa  
+##                                                       -181.7677  
+##                  Release.TypeParoled to Detainer - Out of State  
+##                                                          0.4013  
+##                 Release.TypeParoled to Detainer - U.S. Marshall  
+##                                                        195.4165  
+##                       Release.TypeParoled w/Immediate Discharge  
+##                                                        -40.7595  
+##                        Release.TypeReleased to Special Sentence  
+##                                                       -152.1727  
+##                                    Release.TypeSpecial Sentence  
+##                                                       -124.1422  
+## Race...EthnicityAmerican Indian or Alaska Native - Non-Hispanic  
+##                                                        -17.5900  
+##            Race...EthnicityAsian or Pacific Islander - Hispanic  
+##                                                        -98.4975  
+##        Race...EthnicityAsian or Pacific Islander - Non-Hispanic  
+##                                                         40.6296  
+##                                Race...EthnicityBlack - Hispanic  
+##                                                        -60.7366  
+##                            Race...EthnicityBlack - Non-Hispanic  
+##                                                         35.2115  
+##                                         Race...EthnicityWhite -  
+##                                                       -222.9704  
+##                                Race...EthnicityWhite - Hispanic  
+##                                                         35.2874  
+##                            Race...EthnicityWhite - Non-Hispanic  
+##                                                         11.7620  
+##                                             Age.At.Release35-44  
+##                                                         12.4694  
+##                                             Age.At.Release45-54  
+##                                                         -4.0735  
+##                                      Age.At.Release55 and Older  
+##                                                        -30.0990  
+##                                          Age.At.ReleaseUnder 25  
+##                                                        -22.7302  
+##                                                         SexMale  
+##                                                        -16.7933  
+##                                  Offense.ClassificationB Felony  
+##                                                         66.8327  
+##                                  Offense.ClassificationC Felony  
+##                                                         44.2253  
+##                                  Offense.ClassificationD Felony  
+##                                                          9.8938  
+##                         Offense.ClassificationFelony - Enhanced  
+##                                                         82.6300  
+##  Offense.ClassificationFelony - Enhancement to Original Penalty  
+##                                                         72.7567  
+##                Offense.ClassificationFelony - Mandatory Minimum  
+##                                                       -273.0656  
+##                              Offense.ClassificationOther Felony  
+##                                                        450.5958  
+##                       Offense.ClassificationSerious Misdemeanor  
+##                                                        -46.0852  
+##                     Offense.ClassificationSpecial Sentence 2005  
+##                                                        -21.0602  
+##                                               Offense.TypeOther  
+##                                                        -16.8851  
+##                                            Offense.TypeProperty  
+##                                                         17.8515  
+##                                        Offense.TypePublic Order  
+##                                                        -86.7837  
+##                                             Offense.TypeViolent  
+##                                                       -144.4912  
+##                                          Offense.SubtypeAnimals  
+##                                                       -159.2035  
+##                                            Offense.SubtypeArson  
+##                                                        -85.1069  
+##                                          Offense.SubtypeAssault  
+##                                                        138.4664  
+##                                         Offense.SubtypeBurglary  
+##                                                        -42.5165  
+##                                  Offense.SubtypeDrug Possession  
+##                                                        -23.7634  
+##                                    Offense.SubtypeFlight/Escape  
+##                                                         31.5020  
+##                                    Offense.SubtypeForgery/Fraud  
+##                                                        -48.5535  
+##                                           Offense.SubtypeKidnap  
+##                                                          2.8630  
+##                              Offense.SubtypeMurder/Manslaughter  
+##                                                        183.7490  
+##                                   Offense.SubtypeOther Criminal  
+##                                                        -20.5501  
+##                                       Offense.SubtypeOther Drug  
+##                                                        -25.5779  
+##                               Offense.SubtypeOther Public Order  
+##                                                          2.5563  
+##                                    Offense.SubtypeOther Violent  
+##                                                        176.3270  
+##                                              Offense.SubtypeOWI  
+##                                                         76.0346  
+##                             Offense.SubtypeProstitution/Pimping  
+##                                                        -41.9433  
+##                                          Offense.SubtypeRobbery  
+##                                                         98.3425  
+##                                              Offense.SubtypeSex  
+##                                                        122.2030  
+##                  Offense.SubtypeSex Offender Registry/Residency  
+##                                                         -7.5047  
+##                      Offense.SubtypeSpecial Sentence Revocation  
+##                                                              NA  
+##                                  Offense.SubtypeStolen Property  
+##                                                       -293.4326  
+##                                            Offense.SubtypeTheft  
+##                                                        -38.5557  
+##                                          Offense.SubtypeTraffic  
+##                                                         84.3158  
+##                                      Offense.SubtypeTrafficking  
+##                                                              NA  
+##                                        Offense.SubtypeVandalism  
+##                                                              NA  
+##                                          Offense.SubtypeWeapons  
+##                                                         80.2587  
+##                                             Recidivism.TypeTech  
+##                                                       -146.8492</code></pre>
+<p>Using forward, backward, and hybrid stepwise selection gives us a model with all factors included. This is due to there not being enough factors in our set. In each forward step, the Test MSE would decrease and in each backward step, the Test MSE would increase. This tells us that using all factors would give us the lowest Test MSE.</p>
+<pre class="r"><code>predicted_values = predict(modelfull, X_test)</code></pre>
+<pre><code>## Warning in predict.lm(modelfull, X_test): prediction from a rank-deficient fit
+## may be misleading</code></pre>
+<pre class="r"><code>sum((test_df$Days.to.Return - predicted_values)^2)/(n/2)</code></pre>
+<pre><code>## [1] 28898.74</code></pre>
+<p>It is obvious that much more data is necessary to accurately produce the time it takes to predict when an inmate will commit another crime. This is a great example of how, with more data, we could come closer to predicting when when someone will commit another crime, but we also have to keep in mind that data cannot tell us the full story. It is extremely hard to predict what a person will do because there is often different motives for why someone needs to do something (e.g. commiting a crime).</p>
 </div>
 
 
