@@ -54,11 +54,19 @@ model.prob = predict(model.fit, df[test,],type='response')
 head(model.prob)
 model.pred = rep(FALSE, nrow(df)-length(test))
 model.pred[model.prob >0.5] = TRUE
-table(model.pred, df[test,]$Return.to.Prison)
+# confusion matrix
+tbl.log = table(model.pred, df[test,]$Return.to.Prison)
+tbl.log
+# error rate
 1-mean(model.pred == df[test,]$Return.to.Prison)
+# false positives
+tbl.log[1, 2] / (tbl.log[1, 2] + tbl.log[2, 2])
+# false negatives
+tbl.log[2, 1] / (tbl.log[2, 1] + tbl.log[1, 1])
 ```
 
-Not a fantastic accuracy, around 1/3. Next, we will see if we can improve the model using stepwise selection.
+So, we have an error rate of around 32%, not terrible. What is terrible is our false positive rate, whereas we have a very low false negative rate. In this case, a false positive means incorrectly classifying a former inmate as one who will be rearrested. This may be seen as preferable to a false negative by, say, law enforcement who would rather be safe than sorry. A former inmate may prefer a false negative if a false positive means a stricter parole, more job restrictions, higher restitution, etc. It is not clear cut here what we should aim for, or what the consequences are for either type of error in practice.
+Next, we will see if we can improve the model using stepwise selection.
 
 Let us the stepAIC from the MASS package to perform both forwards and backwards selection on our full model in an attempt to find a better one. Note that stepAIC uses AIC to make its decision.
 ```{r}
@@ -74,16 +82,154 @@ model.step.prob = predict(model.step, df[test,],type='response')
 head(model.step.prob)
 model.step.pred = rep(FALSE, nrow(df)-length(test))
 model.step.pred[model.prob > 0.5] = TRUE
-table(model.step.pred, df[test,]$Return.to.Prison)
+# confusion matrix
+tbl = table(model.step.pred, df[test,]$Return.to.Prison)
+tbl
+# error rate
 1-mean(model.step.pred == df[test,]$Return.to.Prison)
+# false positives
+tbl[1, 2] / (tbl[1, 2] + tbl[2, 2])
+# false negatives
+tbl[2, 1] / (tbl[2, 1] + tbl[1, 1])
 ```
 
-So, again, not good. Exactly as not good as the full model. We can see with the following code that the coefficients are actually the same between the two models:
+So, exactly the same as the full model. We can see with the following code that the coefficients are actually the same between the two models:
 ```{r}
 sum(coef(model.fit)==coef(model.step)) / length(coef(model.fit))
 ```
 So, 100% matching coefficients. I.e., the stepwise selection found that the full model was the best.
 
-Now let us attempt LDA and QDA models to predict 3 year recidivism.
+Now, let us attempt some other models. Since we are working with exclusively categorical predictors, LDA and QDA models are inappropriate. Instead, we will test some tree ensemble models.
 
-# LDA and QDA
+# Tree Classifiers
+
+First, let's build a random forest model to predict recidivism. We will find the best number of variables considered per split.
+```{r}
+library(randomForest)
+ms = seq(1, 7)
+errors = c()
+
+# dataframe with only relevant variables
+df.rel = df[, (names(df) %in% c("Return.to.Prison", "Main.Supervising.District", "Release.Type", "Race...Ethnicity", "Age.At.Release", "Sex", "Offense.Classification", "Offense.Subtype"))]
+df.rel$Return.to.Prison = factor(df.rel$Return.to.Prison)
+Y.test = df.rel[test,]$Return.to.Prison
+for (i in seq(1, length(ms))) {
+  m = ms[i]
+  model.rf = randomForest(Return.to.Prison~.,data=df.rel, subset=train, mtry=m, importance = TRUE, na.action = na.roughfix)
+  Y.rf = predict(model.rf,newdata=df.rel[test,])
+  errors[i] = 1-mean(Y.rf == Y.test)
+}
+
+model.rf.df = data.frame(errors, ms)
+```
+We can then find which m gives us the lowest error rate.
+```{r}
+model.rf.df$m[model.rf.df$errors==min(model.rf.df$errors)]
+```
+So, mtry=2 provides us the best results. Let's see the model for this.
+
+```{r}
+model.rf = randomForest(Return.to.Prison~.,data=df.rel, subset=train, mtry=2, importance = TRUE, na.action = na.roughfix)
+Y.rf = predict(model.rf,newdata=df.rel[test,])
+# confusion matrix
+tbl = table(Y.rf,Y.test)
+tbl
+# error rate
+1-mean(Y.rf == Y.test)
+# false positives
+tbl[1, 2] / (tbl[1, 2] + tbl[2, 2])
+# false negatives
+tbl[2, 1] / (tbl[2, 1] + tbl[1, 1])
+```
+We get an error rate ever so slightly lower than that of our logistic model. We have slightly better false positive rate and worse false negative rate, so our error is somewhat more balanced.
+Next, we can see if a boosted tree gives us further improvement.
+We will test a wide range of lambdas to find one optimal for our data.
+```{r include=FALSE}
+library(gbm)
+
+lambdas = seq(0.001, 0.1, 0.001)
+errors = c()
+df.rel$Return.to.Prison = as.logical(df.rel$Return.to.Prison)
+df.rel.test = df.rel[test,]
+df.rel.train = df.rel[train,]
+Y.test = df.rel.test$Return.to.Prison
+Y.train = df.rel.train$Return.to.Prison
+for (i in seq(1:length(lambdas))) {
+  lambda = lambdas[i]
+  model.boost = gbm(Return.to.Prison~.,data=df.rel.train,distribution="bernoulli", n.trees=1000, interaction.depth=4, shrinkage=lambda)
+  Y.boost.test = predict(model.boost, newdata=df.rel.test, ntrees=1000)
+  Y.bool = rep(FALSE, length(Y.test))
+  Y.bool[Y.boost.test>0]=TRUE
+  errors[i] = 1-mean(Y.bool==Y.test)
+}
+
+model.boost.df = data.frame("error"=errors, "lambda"=lambdas)
+```
+Let's find which lambda was optimal.
+```{r}
+bestlambda = model.boost.df$lambda[model.boost.df$error==min(model.boost.df$error)]
+bestlambda
+```
+So, we have optimal lambda 0.021. Let's see the model using this parameter.
+```{r}
+model.boost = gbm(Return.to.Prison~.,data=df.rel.train,distribution="bernoulli", n.trees=1000, interaction.depth=4, shrinkage=bestlambda)
+Y.boost.test = predict(model.boost, newdata=df.rel.test, ntrees=1000)
+Y.bool = rep(FALSE, length(Y.test))
+Y.bool[Y.boost.test>0]=TRUE
+# confusion matrix
+tbl = table(Y.bool,Y.test)
+tbl
+# error rate
+1-mean(Y.bool==Y.test)
+# false positives
+tbl[1, 2] / (tbl[1, 2] + tbl[2, 2])
+# false negatives
+tbl[2, 1] / (tbl[2, 1] + tbl[1, 1])
+```
+So, we have our best error rate so far, though not by much. Positive and negative error rates basically in line with previous models.
+
+# Summary
+
+So, we have the following results:
+Logistic model:
+```{r}
+# confusion matrix
+tbl.log = table(model.pred, df[test,]$Return.to.Prison)
+tbl.log
+# error rate
+1-mean(model.pred == df[test,]$Return.to.Prison)
+# false positives
+tbl.log[1, 2] / (tbl.log[1, 2] + tbl.log[2, 2])
+# false negatives
+tbl.log[2, 1] / (tbl.log[2, 1] + tbl.log[1, 1])
+```
+Random forest:
+```{r}
+# confusion matrix
+tbl.rf = table(Y.rf,Y.test)
+tbl.rf
+# error rate
+1-mean(Y.rf == Y.test)
+# false positives
+tbl.rf[1, 2] / (tbl.rf[1, 2] + tbl.rf[2, 2])
+# false negatives
+tbl.rf[2, 1] / (tbl.rf[2, 1] + tbl.rf[1, 1])
+```
+Boosted tree:
+```{r}
+# confusion matrix
+tbl.boost = table(Y.bool,Y.test)
+tbl.boost
+# error rate
+1-mean(Y.bool==Y.test)
+# false positives
+tbl.boost[1, 2] / (tbl.boost[1, 2] + tbl.boost[2, 2])
+# false negatives
+tbl.boost[2, 1] / (tbl.boost[2, 1] + tbl.boost[1, 1])
+```
+
+Overall, our boosted tree model produces the best overall error rate, though our logistic model has a bit of an edge in terms of false negatives, and our random forest for false positives, though the differences in errors our not very large. 
+
+# Considerations
+Were we to continue, a focus would be on reduction of false positives. Though we do not have awful overall error rate, our false positives make up the vast majority of our error. For whatever reason, many non-returning prisoners are consistently classified as returning. Some issues likely stem from the fact that we do not have each class in equal proportion.
+It may also be worth investigating a KNN model in the future. As of now, a KNN model has difficulties due to the entirely categorical nature of the data. A thorough investigation into a robust means of calculating distance for each categorical variable could potentially be useful. But, for now, we will be satisfied with our passable boosted tree as our best model.
